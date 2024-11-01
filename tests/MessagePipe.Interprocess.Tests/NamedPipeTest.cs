@@ -2,7 +2,10 @@
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Generic;
+using System.IO.Pipes;
 using System.Linq;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -52,6 +55,50 @@ namespace MessagePipe.Interprocess.Tests
                 result.Should().Equal(9999, 4999);
                 result2.Should().Equal(888);
             }
+        }
+
+        public async Task Hoge()
+        {
+            // Setting PipeSecurity
+            PipeSecurity pipeSecurity = new PipeSecurity();
+
+            // Everyoneに読み取り・書き込みのアクセス許可を追加
+            pipeSecurity.AddAccessRule(new PipeAccessRule(
+                new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+                PipeAccessRights.ReadWrite,
+                AccessControlType.Allow));
+
+            // 現在のユーザーにフルアクセス権を追加
+            pipeSecurity.AddAccessRule(new PipeAccessRule(
+                WindowsIdentity.GetCurrent().User,
+                PipeAccessRights.FullControl,
+                AccessControlType.Allow));
+
+            // prepare message pipe
+            var sc = new ServiceCollection();
+            sc.AddMessagePipe()
+                .AddNamedPipeInterprocess("pipeName", x =>
+                {
+                    x.HostAsServer = true;
+                    x.PipeSecurity = pipeSecurity;
+                    x.UnhandledErrorHandler = (msg, e) => helper.WriteLine(msg + e);
+                });
+            var provider = sc.BuildServiceProvider();
+
+            var p1 = provider.GetRequiredService<IDistributedPublisher<int, int>>();
+            var s1 = provider.GetRequiredService<IDistributedSubscriber<int, int>>();
+
+            var result = new List<int>();
+            await s1.SubscribeAsync(1, x =>
+            {
+                result.Add(x);
+            });
+
+            var result2 = new List<int>();
+            await s1.SubscribeAsync(4, x =>
+            {
+                result2.Add(x);
+            });
         }
 
         [Fact]

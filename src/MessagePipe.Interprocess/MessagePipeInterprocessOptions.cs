@@ -1,6 +1,7 @@
 ﻿using MessagePack;
 using MessagePack.Resolvers;
 using System;
+using System.IO.Pipes;
 
 namespace MessagePipe.Interprocess
 {
@@ -40,6 +41,7 @@ namespace MessagePipe.Interprocess
         public string PipeName { get; }
         public string ServerName { get; set; }
         public bool? HostAsServer { get; set; }
+        public PipeSecurity? PipeSecurity { get; set; }
 
         public MessagePipeInterprocessNamedPipeOptions(string pipeName)
             : base()
@@ -47,6 +49,7 @@ namespace MessagePipe.Interprocess
             this.PipeName = pipeName;
             this.ServerName = ".";
             this.HostAsServer = null;
+            this.PipeSecurity = null;
         }
     }
 
