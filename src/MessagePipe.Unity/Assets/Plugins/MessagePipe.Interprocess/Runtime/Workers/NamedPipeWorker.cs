@@ -73,7 +73,15 @@ namespace MessagePipe.Interprocess.Workers
 
         Lazy<NamedPipeServerStream> CreateLazyServerStream()
         {
-            return new Lazy<NamedPipeServerStream>(() => new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous));
+            return new Lazy<NamedPipeServerStream>(() =>
+            {
+                var ps = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                if (this.options.PipeSecurity != null)
+                {
+                    ps.SetAccessControl(this.options.PipeSecurity);
+                }
+                return ps;
+            });
         }
 
         public void Publish<TKey, TMessage>(TKey key, TMessage message)

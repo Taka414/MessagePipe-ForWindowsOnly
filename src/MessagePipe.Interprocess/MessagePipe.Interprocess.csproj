@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFrameworks>netstandard2.0;net5.0;net6.0</TargetFrameworks>
+        <TargetFrameworks>netstandard2.1;net6.0;net8.0</TargetFrameworks>
         <WarningsAsErrors>true</WarningsAsErrors>
         <Configurations>Debug;Release;</Configurations>
 
@@ -17,8 +17,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="MessagePack" Version="2.3.85" />
-        <PackageReference Include="System.IO.Pipelines" Version="6.0.3" />
+        <PackageReference Include="MessagePack" Version="2.5.187" />
+        <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
         <PackageReference Include="System.IO.Pipes.AccessControl" Version="5.0.0" />
         <ProjectReference Include="..\MessagePipe\MessagePipe.csproj" />
     </ItemGroup>
