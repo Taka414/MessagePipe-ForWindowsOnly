@@ -75,12 +75,22 @@ namespace MessagePipe.Interprocess.Workers
         {
             return new Lazy<NamedPipeServerStream>(() =>
             {
-                var ps = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-                if (this.options.PipeSecurity != null)
+                if (this.options.PipeSecurity == null)
                 {
-                    ps.SetAccessControl(this.options.PipeSecurity);
+                    return new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
                 }
-                return ps;
+                else
+                {
+                    return NamedPipeServerStreamAcl.
+                        Create(pipeName,
+                            PipeDirection.InOut,
+                            1,
+                            PipeTransmissionMode.Byte,
+                            PipeOptions.Asynchronous,
+                            1024 * 10,
+                            1024 * 10,
+                            this.options.PipeSecurity);
+                }
             });
         }
 

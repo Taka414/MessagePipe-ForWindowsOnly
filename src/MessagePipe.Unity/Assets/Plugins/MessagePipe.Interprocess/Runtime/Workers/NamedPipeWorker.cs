@@ -1,4 +1,4 @@
-using MessagePack;
+﻿using MessagePack;
 using MessagePipe.Interprocess.Internal;
 #if !UNITY_2018_3_OR_NEWER
 using Microsoft.Extensions.DependencyInjection;
@@ -10,7 +10,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.Linq;
 using System.Threading;
-using Cysharp.Threading.Tasks;
+using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -35,7 +35,7 @@ namespace MessagePipe.Interprocess.Workers
 
         // request-response
         int messageId = 0;
-        ConcurrentDictionary<int, UniTaskCompletionSource<IInterprocessValue>> responseCompletions = new ConcurrentDictionary<int, UniTaskCompletionSource<IInterprocessValue>>();
+        ConcurrentDictionary<int, TaskCompletionSource<IInterprocessValue>> responseCompletions = new ConcurrentDictionary<int, TaskCompletionSource<IInterprocessValue>>();
 
         // create from DI
         [Preserve]
@@ -78,7 +78,10 @@ namespace MessagePipe.Interprocess.Workers
                 var ps = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
                 if (this.options.PipeSecurity != null)
                 {
+                    Console.WriteLine("NamedPipeServerStream>>>");
+                    //Console.WriteLine("  /AccessRuleType: " + this.options.PipeSecurity.AccessRuleType);
                     ps.SetAccessControl(this.options.PipeSecurity);
+                    Console.WriteLine("NamedPipeServerStream<<<");
                 }
                 return ps;
             });
@@ -96,7 +99,7 @@ namespace MessagePipe.Interprocess.Workers
             channel.Writer.TryWrite(buffer);
         }
 
-        public async UniTask<TResponse> RequestAsync<TRequest, TResponse>(TRequest request, CancellationToken cancellationToken)
+        public async ValueTask<TResponse> RequestAsync<TRequest, TResponse>(TRequest request, CancellationToken cancellationToken)
         {
             if (Interlocked.Increment(ref initializedClient) == 1) // first incr, channel not yet started
             {
@@ -105,7 +108,7 @@ namespace MessagePipe.Interprocess.Workers
             }
 
             var mid = Interlocked.Increment(ref messageId);
-            var tcs = new UniTaskCompletionSource<IInterprocessValue>();
+            var tcs = new TaskCompletionSource<IInterprocessValue>();
             responseCompletions[mid] = tcs;
             var buffer = MessageBuilder.BuildRemoteRequestMessage(typeof(TRequest), typeof(TResponse), mid, request, options.MessagePackSerializerOptions);
             channel.Writer.TryWrite(buffer);
@@ -175,7 +178,7 @@ namespace MessagePipe.Interprocess.Workers
         }
 
         // Receive from udp socket and push value to subscribers.
-        async void RunReceiveLoop(Stream pipeStream, Func<CancellationToken, System.Threading.Tasks.Task> waitForConnection)
+        async void RunReceiveLoop(Stream pipeStream, Func<CancellationToken, Task>? waitForConnection)
         {
         RECONNECT:
             var token = cancellationTokenSource.Token;
@@ -263,11 +266,11 @@ namespace MessagePipe.Interprocess.Workers
                                     var service = provider.GetRequiredService(interfaceType); // IAsyncRequestHandler<TRequest,TResponse>
                                     var genericArgs = interfaceType.GetGenericArguments(); // [TRequest, TResponse]
                                     var request = MessagePackSerializer.Deserialize(genericArgs[0], message.ValueMemory, options.MessagePackSerializerOptions);
-                                    var responseTask = coreInterfaceType.GetMethod("InvokeAsync").Invoke(service, new[] { request, CancellationToken.None });
-                                    var task = typeof(UniTask<>).MakeGenericType(genericArgs[1]).GetMethod("AsTask").Invoke(responseTask, null);
-                                    await ((System.Threading.Tasks.Task)task); // Task<T> -> Task
-                                    var result = task.GetType().GetProperty("Result").GetValue(task);
-                                    resultBytes = MessageBuilder.BuildRemoteResponseMessage(mid, genericArgs[1], result, options.MessagePackSerializerOptions);
+                                    var responseTask = coreInterfaceType.GetMethod("InvokeAsync")!.Invoke(service, new[] { request, CancellationToken.None });
+                                    var task = typeof(ValueTask<>).MakeGenericType(genericArgs[1]).GetMethod("AsTask")!.Invoke(responseTask, null);
+                                    await ((System.Threading.Tasks.Task)task!); // Task<T> -> Task
+                                    var result = task.GetType().GetProperty("Result")!.GetValue(task);
+                                    resultBytes = MessageBuilder.BuildRemoteResponseMessage(mid, genericArgs[1], result!, options.MessagePackSerializerOptions);
                                 }
                                 catch (Exception ex)
                                 {
@@ -323,7 +326,7 @@ namespace MessagePipe.Interprocess.Workers
             return MessagePackSerializer.Deserialize<T>(buffer, options);
         }
 
-        static async UniTask ReadFullyAsync(byte[] buffer, Stream stream, int index, int remain, CancellationToken token)
+        static async ValueTask ReadFullyAsync(byte[] buffer, Stream stream, int index, int remain, CancellationToken token)
         {
             while (remain > 0)
             {

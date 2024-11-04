@@ -56,6 +56,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MessagePipe.Nats", "src\Mes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessagePipe.Nats.Tests", "tests\MessagePipe.Nats.Tests\MessagePipe.Nats.Tests.csproj", "{8BE1C4C7-9584-4F87-9773-6E7A3B3C71E2}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{EFA3F76B-118D-4C96-887D-41DBB8CDE4FF}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

@@ -1,4 +1,4 @@
-using MessagePack;
+﻿using MessagePack;
 using MessagePack.Resolvers;
 using System;
 using System.IO.Pipes;

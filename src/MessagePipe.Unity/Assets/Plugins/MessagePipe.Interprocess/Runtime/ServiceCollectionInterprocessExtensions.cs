@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using MessagePipe;
 using MessagePipe.Interprocess;
 using MessagePipe.Interprocess.Workers;
