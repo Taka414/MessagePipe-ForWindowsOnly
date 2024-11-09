@@ -187,77 +187,79 @@ namespace MessagePipe.Interprocess.Workers
         // Receive from udp socket and push value to subscribers.
         async void RunReceiveLoop(Stream pipeStream, Func<CancellationToken, Task>? waitForConnection)
         {
-        RECONNECT:
-            var token = cancellationTokenSource.Token;
-            if (waitForConnection != null)
+            try
             {
-                try
+            RECONNECT:
+                var token = cancellationTokenSource.Token;
+                if (waitForConnection != null)
                 {
-                    await waitForConnection(token).ConfigureAwait(false);
-                }
-                catch (IOException)
-                {
-                    return; // connection closed.
-                }
-            }
-            var buffer = new byte[65536];
-            while (!token.IsCancellationRequested)
-            {
-                ReadOnlyMemory<byte> value = Array.Empty<byte>();
-                try
-                {
-                    var readLen = await pipeStream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
-                    if (readLen == 0)
+                    try
                     {
-                        if (waitForConnection != null)
+                        await waitForConnection(token).ConfigureAwait(false);
+                    }
+                    catch (IOException)
+                    {
+                        return; // connection closed.
+                    }
+                }
+                var buffer = new byte[65536];
+                while (!token.IsCancellationRequested)
+                {
+                    ReadOnlyMemory<byte> value = Array.Empty<byte>();
+                    try
+                    {
+                        var readLen = await pipeStream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
+                        if (readLen == 0)
                         {
-                            server.Value.Dispose();
-                            server = CreateLazyServerStream();
-                            pipeStream = server.Value;
-                            goto RECONNECT; // end of stream(disconnect, wait reconnect)
+                            if (waitForConnection != null)
+                            {
+                                server.Value.Dispose();
+                                server = CreateLazyServerStream();
+                                pipeStream = server.Value;
+                                goto RECONNECT; // end of stream(disconnect, wait reconnect)
+                            }
+                        }
+
+                        var messageLen = MessageBuilder.FetchMessageLength(buffer);
+                        if (readLen == (messageLen + 4))
+                        {
+                            value = buffer.AsMemory(4, messageLen); // skip length header
+                        }
+                        else
+                        {
+                            // read more
+                            if (buffer.Length < (messageLen + 4))
+                            {
+                                Array.Resize(ref buffer, messageLen + 4);
+                            }
+                            var remain = messageLen - (readLen - 4);
+                            await ReadFullyAsync(buffer, pipeStream, readLen, remain, token).ConfigureAwait(false);
+                            value = buffer.AsMemory(4, messageLen);
                         }
                     }
-
-                    var messageLen = MessageBuilder.FetchMessageLength(buffer);
-                    if (readLen == (messageLen + 4))
+                    catch (IOException)
                     {
-                        value = buffer.AsMemory(4, messageLen); // skip length header
+                        return; // connection closed.
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        // read more
-                        if (buffer.Length < (messageLen + 4))
+                        if (ex is OperationCanceledException) return;
+                        if (token.IsCancellationRequested) return;
+
+                        // network error, terminate.
+                        options.UnhandledErrorHandler("network error, receive loop will terminate." + Environment.NewLine, ex);
+                        return;
+                    }
+
+                    try
+                    {
+                        var message = MessageBuilder.ReadPubSubMessage(value.ToArray()); // can avoid copy?
+                        switch (message.MessageType)
                         {
-                            Array.Resize(ref buffer, messageLen + 4);
-                        }
-                        var remain = messageLen - (readLen - 4);
-                        await ReadFullyAsync(buffer, pipeStream, readLen, remain, token).ConfigureAwait(false);
-                        value = buffer.AsMemory(4, messageLen);
-                    }
-                }
-                catch (IOException)
-                {
-                    return; // connection closed.
-                }
-                catch (Exception ex)
-                {
-                    if (ex is OperationCanceledException) return;
-                    if (token.IsCancellationRequested) return;
-
-                    // network error, terminate.
-                    options.UnhandledErrorHandler("network error, receive loop will terminate." + Environment.NewLine, ex);
-                    return;
-                }
-
-                try
-                {
-                    var message = MessageBuilder.ReadPubSubMessage(value.ToArray()); // can avoid copy?
-                    switch (message.MessageType)
-                    {
-                        case MessageType.PubSub:
-                            publisher.Publish(message, message, CancellationToken.None);
-                            break;
-                        case MessageType.RemoteRequest:
+                            case MessageType.PubSub:
+                                publisher.Publish(message, message, CancellationToken.None);
+                                break;
+                            case MessageType.RemoteRequest:
                             {
                                 // NOTE: should use without reflection(Expression.Compile)
                                 var header = Deserialize<RequestHeader>(message.KeyMemory, options.MessagePackSerializerOptions);
@@ -288,8 +290,8 @@ namespace MessagePipe.Interprocess.Workers
                                 await pipeStream.WriteAsync(resultBytes, 0, resultBytes.Length).ConfigureAwait(false);
                             }
                             break;
-                        case MessageType.RemoteResponse:
-                        case MessageType.RemoteError:
+                            case MessageType.RemoteResponse:
+                            case MessageType.RemoteError:
                             {
                                 var mid = Deserialize<int>(message.KeyMemory, options.MessagePackSerializerOptions);
                                 if (responseCompletions.TryRemove(mid, out var tcs))
@@ -306,19 +308,24 @@ namespace MessagePipe.Interprocess.Workers
                                 }
                             }
                             break;
-                        default:
-                            break;
+                            default:
+                                break;
+                        }
+                    }
+                    catch (IOException)
+                    {
+                        return; // connection closed.
+                    }
+                    catch (Exception ex)
+                    {
+                        if (ex is OperationCanceledException) continue;
+                        options.UnhandledErrorHandler("", ex);
                     }
                 }
-                catch (IOException)
-                {
-                    return; // connection closed.
-                }
-                catch (Exception ex)
-                {
-                    if (ex is OperationCanceledException) continue;
-                    options.UnhandledErrorHandler("", ex);
-                }
+            }
+            catch (OperationCanceledException ex)
+            {
+                //options.UnhandledErrorHandler("", ex);
             }
         }
 
