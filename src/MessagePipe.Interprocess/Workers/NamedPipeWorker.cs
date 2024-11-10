@@ -141,46 +141,53 @@ namespace MessagePipe.Interprocess.Workers
         // Send packet to udp socket from publisher
         async void RunPublishLoop()
         {
-            var reader = channel.Reader;
-            var token = cancellationTokenSource.Token;
-            var pipeStream = client.Value;
-
             try
             {
+                var reader = channel.Reader;
+                var token = cancellationTokenSource.Token;
+                var pipeStream = client.Value;
+
+                try
+                {
 #if !UNITY_2018_3_OR_NEWER
-                await pipeStream.ConnectAsync(Timeout.Infinite, token).ConfigureAwait(false);
+                    await pipeStream.ConnectAsync(Timeout.Infinite, token).ConfigureAwait(false);
 #else
                 await System.Threading.Tasks.Task.Run(() => pipeStream.Connect(), token);
 #endif
-            }
-            catch (IOException)
-            {
-                return; // connection closed.
-            }
-            RunReceiveLoop(pipeStream, null); // client connected, setup receive loop
-
-            while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
-            {
-                while (reader.TryRead(out var item))
+                }
+                catch (IOException)
                 {
-                    try
-                    {
-                        await pipeStream.WriteAsync(item, 0, item.Length, token).ConfigureAwait(false);
-                    }
-                    catch (IOException)
-                    {
-                        return; // connection closed.
-                    }
-                    catch (Exception ex)
-                    {
-                        if (ex is OperationCanceledException) return;
-                        if (token.IsCancellationRequested) return;
+                    return; // connection closed.
+                }
+                RunReceiveLoop(pipeStream, null); // client connected, setup receive loop
 
-                        // network error, terminate.
-                        options.UnhandledErrorHandler("network error, publish loop will terminate." + Environment.NewLine, ex);
-                        return;
+                while (await reader.WaitToReadAsync(token).ConfigureAwait(false))
+                {
+                    while (reader.TryRead(out var item))
+                    {
+                        try
+                        {
+                            await pipeStream.WriteAsync(item, 0, item.Length, token).ConfigureAwait(false);
+                        }
+                        catch (IOException)
+                        {
+                            return; // connection closed.
+                        }
+                        catch (Exception ex)
+                        {
+                            if (ex is OperationCanceledException) return;
+                            if (token.IsCancellationRequested) return;
+
+                            // network error, terminate.
+                            options.UnhandledErrorHandler("network error, publish loop will terminate." + Environment.NewLine, ex);
+                            return;
+                        }
                     }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // Disposeによる例外は正常なのでは？
             }
         }
 
@@ -323,9 +330,9 @@ namespace MessagePipe.Interprocess.Workers
                     }
                 }
             }
-            catch (OperationCanceledException ex)
+            catch (OperationCanceledException)
             {
-                //options.UnhandledErrorHandler("", ex);
+                // Disposeによる例外は正常なのでは？
             }
         }
 
